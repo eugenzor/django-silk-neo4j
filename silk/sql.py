@@ -98,3 +98,32 @@ def execute_sql(self, *args, **kwargs):
             else:
                 DataCollector().register_silk_query(query_dict)
     return self._execute_sql(*args, **kwargs)
+
+
+def execute_cypher(self, query, *args, **kwparameters):
+    """wrapper around real execute_sql in order to extract information"""
+
+
+    params = args[0] if len(args) and args[0] else {}
+    cypher_query = query
+    for key, value in params.items():
+        replacement = f"'{value}'" if isinstance(value, str) else str(value)
+        cypher_query = cypher_query.replace(f'${key}', replacement)
+
+
+    tb = ''.join(reversed(traceback.format_stack()))
+    query_dict = {
+        'query': cypher_query,
+        'start_time': timezone.now(),
+        'traceback': tb
+    }
+    try:
+        return self._execute_cypher(query, *args, **kwparameters)
+    finally:
+        query_dict['end_time'] = timezone.now()
+        request = DataCollector().request
+        if request:
+            query_dict['request'] = request
+
+        query_dict['analysis'] = None
+        DataCollector().register_query(query_dict)
