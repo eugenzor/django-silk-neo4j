@@ -5,7 +5,6 @@ import re
 from uuid import uuid4
 
 import sqlparse
-from django.core.files.storage import get_storage_class
 from django.db import models, transaction
 from django.db.models import (
     BooleanField,
@@ -20,12 +19,13 @@ from django.db.models import (
     TextField,
 )
 from django.utils import timezone
+from django.utils.module_loading import import_string
 from django.utils.safestring import mark_safe
 
 from silk.config import SilkyConfig
 from silk.utils.profile_parser import parse_profile
 
-silk_storage = get_storage_class(SilkyConfig().SILKY_STORAGE_CLASS)()
+silk_storage = import_string(SilkyConfig().SILKY_STORAGE_CLASS)()
 
 
 # Seperated out so can use in tests w/o models
