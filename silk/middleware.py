@@ -6,7 +6,7 @@ from django.db.models.sql.compiler import SQLCompiler
 from django.urls import NoReverseMatch, reverse
 from django.utils import timezone
 
-from neo4j.work.simple import Session as Neo4jSession
+from neo4j import ManagedTransaction, Session, Transaction
 
 from silk.collector import DataCollector
 from silk.config import SilkyConfig
@@ -113,9 +113,12 @@ class SilkyMiddleware:
             SQLCompiler._execute_sql = SQLCompiler.execute_sql
             SQLCompiler.execute_sql = execute_sql
 
-        if not hasattr(Neo4jSession, '_execute_cypher'):
-            Neo4jSession._execute_cypher = Neo4jSession.run
-            Neo4jSession.run = execute_cypher
+        # Auto-commit queries go through Session.run, queries inside a
+        # transaction through Transaction.run; neither calls the other.
+        for runner in (Session, Transaction, ManagedTransaction):
+            if '_execute_cypher' not in vars(runner):
+                runner._execute_cypher = runner.run
+                runner.run = execute_cypher
 
         silky_config = SilkyConfig()
 

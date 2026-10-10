@@ -100,12 +100,13 @@ def execute_sql(self, *args, **kwargs):
     return self._execute_sql(*args, **kwargs)
 
 
-def execute_cypher(self, query, *args, **kwparameters):
-    """wrapper around real execute_sql in order to extract information"""
+def execute_cypher(self, query, parameters=None, **kwparameters):
+    """wrapper around real Session.run / Transaction.run in order to extract information"""
 
 
-    params = args[0] if len(args) and args[0] else {}
-    cypher_query = query
+    params = dict(parameters or {}, **kwparameters)
+    # An auto-commit query may arrive wrapped in neo4j.Query
+    cypher_query = str(getattr(query, 'text', query))
     for key, value in params.items():
         replacement = f"'{value}'" if isinstance(value, str) else str(value)
         cypher_query = cypher_query.replace(f'${key}', replacement)
@@ -118,7 +119,7 @@ def execute_cypher(self, query, *args, **kwparameters):
         'traceback': tb
     }
     try:
-        return self._execute_cypher(query, *args, **kwparameters)
+        return self._execute_cypher(query, parameters, **kwparameters)
     finally:
         query_dict['end_time'] = timezone.now()
         request = DataCollector().request

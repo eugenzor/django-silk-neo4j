@@ -38,7 +38,7 @@ setup(
         'sqlparse',
         'autopep8',
         'gprof2dot>=2017.09.19',
-        'neo4j-driver==4.4.10',
+        'neo4j>=5.0',
     ],
     python_requires='>=3.8',
     setup_requires=['setuptools_scm'],

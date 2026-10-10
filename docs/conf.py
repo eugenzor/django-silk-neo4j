@@ -11,7 +11,7 @@
 # All configuration values have a default; values that are commented out
 # serve to show the default.
 
-import pkg_resources
+from importlib.metadata import version as _dist_version
 
 # If extensions (or modules to document with autodoc) are in another directory,
 # add these directories to sys.path here. If the directory is relative to the
@@ -46,7 +46,7 @@ copyright = '2014, Michael Ford'
 # built documents.
 #
 # The full version, including alpha/beta/rc tags.
-release = pkg_resources.get_distribution("django-silk").version
+release = _dist_version("django-silk")
 # The short X.Y version.
 version = '.'.join(release.split('.')[:2])
 
