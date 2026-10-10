@@ -1,4 +1,9 @@
+import cProfile
+import os.path
+import sys
+
 from django.test import TestCase
+from django.utils import timezone
 from tests.util import DictStorage
 
 from silk.collector import DataCollector
@@ -47,6 +52,33 @@ class TestCollector(TestCase):
                 self.assertTrue(content)
                 self.assertGreater(len(content), 0)
 
+    def test_finalise_is_idempotent(self):
+        request = RequestMinFactory()
+        DataCollector().configure(request, should_profile=False)
+        DataCollector().register_query({
+            'query': 'SELECT 1',
+            'start_time': timezone.now(),
+            'end_time': timezone.now(),
+            'traceback': '',
+            'analysis': None,
+            'request': request,
+        })
+        DataCollector().finalise()
+        # Second call must not raise TypeError from stale 'model' key in query dict
+        DataCollector().finalise()
+
+    def test_configure_exception(self):
+        other_profiler = cProfile.Profile()
+        other_profiler.enable()
+        collector = DataCollector()
+        collector.configure()
+        other_profiler.disable()
+        if sys.version_info >= (3, 12):
+            self.assertEqual(collector.local.pythonprofiler, None)
+        else:
+            self.assertIsNotNone(collector.local.pythonprofiler)
+            collector.stop_python_profiler()
+
     def test_profile_file_name_with_disabled_extended_file_name(self):
         SilkyConfig().SILKY_PYTHON_PROFILER_EXTENDED_FILE_NAME = False
         request_path = 'normal/uri/'
@@ -80,5 +112,5 @@ class TestCollector(TestCase):
         DataCollector().configure(request)
         DataCollector().finalise()
         file_path = DataCollector().request.prof_file.name
-        filename = file_path.rsplit('/')[-1]
+        filename = os.path.basename(file_path)
         return filename.replace(f"{request.id}.prof", "")

@@ -4,12 +4,14 @@
 {% load silk_filters %}
 {% load static %}
 {% load silk_inclusion %}
+{% load silk_urls %}
 
 {% block pagetitle %}Silky - SQL - {{ silk_request.path }}{% endblock %}
 
 {% block js %}
   <script type="text/javascript" src="{% static 'silk/lib/sortable.js' %}"></script>
   {{ block.super }}
+  <script src="{% static 'silk/js/pages/sql.js' %}"></script>
 {% endblock %}
 
 {% block style %}
@@ -18,6 +20,26 @@
     <link rel="stylesheet" href="{% static 'silk/css/components/numeric.css' %}">
     <link rel="stylesheet" href="{% static 'silk/css/components/summary.css' %}">
     <link rel="stylesheet" href="{% static 'silk/css/components/cell.css' %}">
+{% endblock %}
+
+{% block filter %}
+    <form id="filter-form" action="." method="get"></form>
+
+    <div class="menu-item">
+        <div class="menu-item-outer">
+            <div class="menu-item-inner">
+                <label>Show:
+                    <select name="per_page" form="filter-form" onchange="this.form.submit();">
+                        {% for option in options_page_size %}
+                            <option value="{{ option }}"
+                                    {% if option == per_page %}selected{% endif %}>{{ option }}</option>
+                        {% endfor %}
+                    </select>
+                </label>
+            </div>
+        </div>
+    </div>
+    {{ block.super }}
 {% endblock %}
 
 {% block menu %}
@@ -57,16 +79,8 @@
                     <th class="right-aligned">Execution Time (ms)</th>
                 </tr>
                 {% for sql_query in items %}
-                    <!-- TODO: Pretty grimy... -->
-                    <tr class="data-row" onclick="window.location=' \
-                       {% if profile and silk_request %}\
-                           {% url "silk:request_and_profile_sql_detail" silk_request.id profile.id sql_query.id %}\
-                       {% elif profile %}\
-                           {% url "silk:profile_sql_detail" profile.id sql_query.id %}\
-                       {% elif silk_request %}\
-                           {% url "silk:request_sql_detail" silk_request.id sql_query.id %}\
-                       {% endif %}\
-                        ';">
+                    {% sql_detail_url silk_request profile sql_query as detail_url %}
+                    <tr class="data-row" data-sql-detail-url="{{ detail_url }}">
                         <td class="left-aligned">+{{ sql_query.start_time_relative }}</td>
                         <td class="left-aligned">{{ sql_query.first_keywords }}</td>
                         <td class="left-aligned">{{ sql_query.tables_involved|join:", " }}</td>
@@ -77,6 +91,7 @@
 
             </table>
 
+            {% if items.paginator.num_pages > 1 %}
             <div id="table-pagination" class="pagination">
                 <div class="current">
                     Page {{ items.number }} of {{ items.paginator.num_pages }}.
@@ -84,18 +99,19 @@
 
                 <div class="step-links">
                     {% if items.has_previous %}
-                        <a href="?page={{ items.previous_page_number }}">previous</a>
+                        <a href="?page={{ items.previous_page_number }}&per_page={{ per_page }}">previous</a>
                     {% else %}
                         previous
                     {% endif %}
                     |
                     {% if items.has_next %}
-                        <a href="?page={{ items.next_page_number }}">next</a>
+                        <a href="?page={{ items.next_page_number }}&per_page={{ per_page }}">next</a>
                     {% else %}
                         next
                     {% endif %}
                 </div>
             </div>
+            {% endif %}
         </div>
     </div>
 

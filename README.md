@@ -21,7 +21,9 @@ Silk is a live profiling and inspection tool for the Django framework. Silk inte
   * [Request/Response bodies](#requestresponse-bodies)
   * [Meta-Profiling](#meta-profiling)
   * [Recording a fraction of requests](#recording-a-fraction-of-requests)
+  * [Ignoring specific paths](#ignoring-specific-paths)
   * [Limiting request/response data](#limiting-requestresponse-data)
+  * [Neo4j](#neo4j)
   * [Clearing logged data](#clearing-logged-data)
 * [Contributing](#contributing)
   * [Development Environment](#development-environment)
@@ -30,8 +32,8 @@ Silk is a live profiling and inspection tool for the Django framework. Silk inte
 
 Silk has been tested with:
 
-* Django: 3.2, 4.1
-* Python: 3.8, 3.9, 3.10, 3.11
+* Django: 5.2, 6.0, 6.1
+* Python: 3.10, 3.11, 3.12, 3.13, 3.14, 3.15
 
 ## Installation
 
@@ -39,6 +41,12 @@ Via pip into a `virtualenv`:
 
 ```bash
 pip install django-silk
+```
+
+To including optional formatting of python snippets:
+
+```bash
+pip install django-silk[formatting]
 ```
 
 In `settings.py` add the following:
@@ -50,13 +58,24 @@ MIDDLEWARE = [
     ...
 ]
 
+TEMPLATES = [{
+    ...
+    'OPTIONS': {
+        'context_processors': [
+            ...
+            'django.template.context_processors.request',
+        ],
+    },
+}]
+
+
 INSTALLED_APPS = (
     ...
     'silk'
 )
 ```
 
-**Note:** The middleware placement is sensitive. If the middleware before `silk.middleware.SilkyMiddleware` returns from `process_request` then `SilkyMiddleware` will never get the chance to execute. Therefore you must ensure that any middleware placed before never returns anything from `process_request`. See the [django docs](https://docs.djangoproject.com/en/dev/topics/http/middleware/#process-request) for more information on this.
+**Note:** The order of middleware is sensitive. If any middleware placed before `silk.middleware.SilkyMiddleware` returns a response without invoking its `get_response`, the `SilkyMiddleware` won’t run. To avoid this, ensure that middleware preceding `SilkyMiddleware` does not bypass or return a response without calling its `get_response`. For further details, check out the [Django documentation](https://docs.djangoproject.com/en/dev/topics/http/middleware/#middleware-order-and-layering).
 
 **Note:** If you are using `django.middleware.gzip.GZipMiddleware`, place that **before** `silk.middleware.SilkyMiddleware`, otherwise you will get an encoding error.
 
@@ -97,14 +116,14 @@ if required. The UI can be reached at `/silk/`
 Via [github tags](https://github.com/jazzband/django-silk/releases):
 
 ```bash
-pip install https://github.com/jazzband/silk/archive/<version>.tar.gz
+pip install git+https://github.com/jazzband/django-silk.git@<version>#egg=django_silk
 ```
 
 You can install from master using the following, but please be aware that the version in master
 may not be working for all versions specified in [requirements](#requirements)
 
 ```bash
-pip install -e git+https://github.com/jazzband/django-silk.git#egg=django-silk
+pip install -e git+https://github.com/jazzband/django-silk.git#egg=django_silk
 ```
 
 ## Features
@@ -150,7 +169,7 @@ Before diving into the stack trace to figure out where this request is coming fr
 
 ### Profiling
 
-Turn on the SILKY_PYTHON_PROFILER setting to use Python's built-in cProfile profiler. Each request will be separately profiled and the profiler's output will be available on the request's Profiling page in the Silk UI.
+Turn on the SILKY_PYTHON_PROFILER setting to use Python's built-in `cProfile` profiler. Each request will be separately profiled and the profiler's output will be available on the request's Profiling page in the Silk UI.  Note that as of Python 3.12, `cProfile` cannot run concurrently so [django-silk under Python 3.12 and later will not profile if another profile is running](https://github.com/jazzband/django-silk/pull/692) (even its own profiler in another thread).
 
 ```python
 SILKY_PYTHON_PROFILER = True
@@ -170,6 +189,15 @@ When enabled, a graph visualisation generated using [gprof2dot](https://github.c
 A custom storage class can be used for the saved generated binary `.prof` files:
 
 ```python
+# See https://docs.djangoproject.com/en/stable/ref/settings/#std-setting-STORAGES
+STORAGES = {
+    'SILKY_STORAGE': {
+        'BACKEND': 'path.to.StorageClass',
+    },
+    # ...
+}
+
+# Alternatively, if STORAGES has no 'SILKY_STORAGE' entry:
 SILKY_STORAGE_CLASS = 'path.to.StorageClass'
 ```
 
@@ -469,6 +497,20 @@ You can also use a `lambda`.
 SILKY_INTERCEPT_FUNC = lambda request: 'record_requests' in request.session
 ```
 
+### Ignoring specific paths
+
+To stop silk recording particular paths entirely, list them in `SILKY_IGNORE_PATHS`:
+
+```python
+SILKY_IGNORE_PATHS = ['/healthz', '/readyz']
+```
+
+Entries are matched exactly against `request.path_info`, which is the request path
+*without* any `SCRIPT_NAME` prefix your front-end web server may add.  So if silk is
+mounted under `/some-prefix/`, write `/healthz` rather than `/some-prefix/healthz`.
+
+Silk's own views are always ignored and do not need to be listed here.
+
 ### Limiting request/response data
 
 To make sure silky garbage collects old request/response data, a config var can be set to limit the number of request/response rows it stores.
@@ -506,6 +548,32 @@ SILKY_EXPLAIN_FLAGS = {'format':'JSON', 'costs': True}
 ```
 
 
+### Neo4j
+
+This fork also records Cypher queries run through the official
+[neo4j Python driver](https://neo4j.com/docs/api/python-driver/current/) (5.x and 6.x), which
+covers libraries built on top of it such as [neomodel](https://github.com/neo4j-contrib/neomodel).
+Install it with the `neo4j` extra:
+
+```bash
+pip install "django-silk[neo4j] @ git+https://github.com/eugenzor/django-silk-neo4j.git"
+```
+
+No extra configuration is needed. Queries run with `session.run()`, inside explicit or managed
+transactions, and with `driver.execute_query()` (sync and async) are listed next to the SQL
+queries of the request, with their parameters inlined. `SILKY_IGNORE_QUERIES` applies to them too.
+
+The driver is optional: without it Silk behaves exactly like upstream. To turn the capture off
+while the driver is installed:
+
+```python
+SILKY_NEO4J = False
+```
+
+**Note:** the driver returns results lazily, so the recorded time covers sending the query and
+receiving the first response, not the time spent consuming all records. Query analysis
+(`SILKY_ANALYZE_QUERIES`) is not available for Cypher queries.
+
 ### Masking sensitive data on request body
 
 By default, Silk is filtering values that contains the following keys (they are case insensitive)
@@ -541,10 +609,10 @@ Silk features a project named `project` that can be used for `silk` development.
 you can work on the sample `project` and on the `silk` package at the same time.
 
 In order to setup local development you should first install all the dependencies for the test `project`. From the
-root of the `project` directory:
+root of the git repository (requires pip 25.1 or later):
 
 ```bash
-pip install -r requirements.txt
+pip install --group test
 ```
 
 You will also need to install `silk`'s dependencies. From the root of the git repository:

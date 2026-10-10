@@ -208,6 +208,9 @@ class MethodFilter(BaseFilter):
 
 
 def filters_from_request(request):
+    if 'clear_filters' in request.POST:
+        return {}
+
     raw_filters = {}
     for key in request.POST:
         splt = key.split('-')
@@ -230,3 +233,23 @@ def filters_from_request(request):
             except FilterValidationError:
                 logger.warning(f'Validation error when processing filter {typ}({value})')
     return filters
+
+
+class FiltersManager:
+    def __init__(self, filters_key):
+        self.key = filters_key
+
+    def save(self, request, filters):
+        if hasattr(request, 'session'):
+            request.session[self.key] = filters
+        request.silk_filters = filters
+
+    def get(self, request):
+        if hasattr(request, 'session'):
+            return request.session.get(self.key, {})
+        # Mirror the session branch's safe default: get() should never
+        # raise, even when this is the first time save() has been
+        # called for this request (or session support isn't available
+        # at all), in which case silk_filters was never set. See
+        # GH #361.
+        return getattr(request, 'silk_filters', {})

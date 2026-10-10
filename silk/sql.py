@@ -53,7 +53,11 @@ def _explain_query(connection, q, params):
 
         # currently we cannot use explain() method
         # for queries other than `select`
-        prefixed_query = f"{prefix} {q}"
+        if q.upper().startswith(prefix.upper()):
+            # to avoid "EXPLAIN EXPLAIN", do not add prefix
+            prefixed_query = q
+        else:
+            prefixed_query = f"{prefix} {q}"
         with connection.cursor() as cur:
             cur.execute(prefixed_query, params)
             result = _unpack_explanation(cur.fetchall())
@@ -77,7 +81,13 @@ def execute_sql(self, *args, **kwargs):
             return iter([])
         else:
             return
-    sql_query = q % tuple(force_str(param) for param in params)
+    try:
+        sql_query = q % tuple(force_str(param) for param in params)
+    except UnicodeDecodeError:
+        # Sometimes `force_str` can still raise a UnicodeDecodeError
+        # Reference: https://github.com/jazzband/django-silk/issues?q=encoding
+        # This could log a warning but given this is run in the hot path, logging could be too expensive.
+        return self._execute_sql(*args, **kwargs)
     if _should_wrap(sql_query):
         tb = ''.join(reversed(traceback.format_stack()))
         query_dict = {
@@ -98,32 +108,3 @@ def execute_sql(self, *args, **kwargs):
             else:
                 DataCollector().register_silk_query(query_dict)
     return self._execute_sql(*args, **kwargs)
-
-
-def execute_cypher(self, query, *args, **kwparameters):
-    """wrapper around real execute_sql in order to extract information"""
-
-
-    params = args[0] if len(args) and args[0] else {}
-    cypher_query = query
-    for key, value in params.items():
-        replacement = f"'{value}'" if isinstance(value, str) else str(value)
-        cypher_query = cypher_query.replace(f'${key}', replacement)
-
-
-    tb = ''.join(reversed(traceback.format_stack()))
-    query_dict = {
-        'query': cypher_query,
-        'start_time': timezone.now(),
-        'traceback': tb
-    }
-    try:
-        return self._execute_cypher(query, *args, **kwparameters)
-    finally:
-        query_dict['end_time'] = timezone.now()
-        request = DataCollector().request
-        if request:
-            query_dict['request'] = request
-
-        query_dict['analysis'] = None
-        DataCollector().register_query(query_dict)

@@ -16,10 +16,12 @@ from silk.config import SilkyConfig
 Logger = logging.getLogger('silk.model_factory')
 
 content_types_json = ['application/json',
-                      'application/x-javascript',
-                      'text/javascript',
-                      'text/x-javascript',
                       'text/x-json']
+content_types_js = ['application/javascript',
+                    'application/x-javascript',
+                    'text/javascript',
+                    'text/x-javascript']
+content_types_parseable = content_types_json + content_types_js
 multipart_form = 'multipart/form-data'
 content_type_form = [multipart_form,
                      'application/x-www-form-urlencoded']
@@ -91,7 +93,7 @@ class RequestModelFactory:
             pattern = re.compile(key_string, re.I)
             if isinstance(obj, dict):
                 for key in obj.keys():
-                    if pattern.search(key):
+                    if key_string and pattern.search(key):
                         obj[key] = RequestModelFactory.CLEANSED_SUBSTITUTE
                     else:
                         obj[key] = replace_pattern_values(obj[key])
@@ -99,18 +101,19 @@ class RequestModelFactory:
                 for index, item in enumerate(obj):
                     obj[index] = replace_pattern_values(item)
             else:
-                if pattern.search(str(obj)):
+                if key_string and pattern.search(str(obj)):
                     return RequestModelFactory.CLEANSED_SUBSTITUTE
             return obj
 
         try:
             json_body = json.loads(body)
         except Exception as e:
-            pattern = re.compile(fr'(({key_string})[^=]*)=(.*?)(&|$)', re.M | re.I)
-            try:
-                body = re.sub(pattern, f'\\1={RequestModelFactory.CLEANSED_SUBSTITUTE}\\4', body)
-            except Exception:
-                Logger.debug(f'{str(e)}')
+            if key_string:
+                pattern = re.compile(fr'(({key_string})[^=]*)=(.*?)(&|$)', re.M | re.I)
+                try:
+                    body = re.sub(pattern, f'\\1={RequestModelFactory.CLEANSED_SUBSTITUTE}\\4', body)
+                except Exception:
+                    Logger.debug(f'{str(e)}')
         else:
             body = json.dumps(replace_pattern_values(json_body), ensure_ascii=SilkyConfig().SILKY_JSON_ENSURE_ASCII)
 
@@ -126,7 +129,7 @@ class RequestModelFactory:
             body = self.request.POST
             body = json.dumps(dict(body), sort_keys=True, indent=4
                               , ensure_ascii=SilkyConfig().SILKY_JSON_ENSURE_ASCII)
-        elif content_type in content_types_json:
+        elif content_type in content_types_parseable:
             try:
                 body = json.dumps(json.loads(raw_body), sort_keys=True, indent=4
                                   , ensure_ascii=SilkyConfig().SILKY_JSON_ENSURE_ASCII)
@@ -276,20 +279,17 @@ class ResponseModelFactory:
                             'Size of %d for %s is less than %d so saving response body'
                             % (size, self.request.path, max_body_size)
                         )
-            if content and content_type in content_types_json:
+            if content and content_type in content_types_parseable:
                 # TODO: Perhaps theres a way to format the JSON without parsing it?
-                if not isinstance(content, str):
-                    # byte string is not compatible with json.loads(...)
-                    # and json.dumps(...) in python3
-                    content = content.decode()
                 try:
                     body = json.dumps(json.loads(content), sort_keys=True, indent=4
                                       , ensure_ascii=SilkyConfig().SILKY_JSON_ENSURE_ASCII)
                 except (TypeError, ValueError):
-                    Logger.warn(
-                        'Response to request with pk %s has content type %s but was unable to parse it'
-                        % (self.request.pk, content_type)
-                    )
+                    if content_type in content_types_json:
+                        Logger.warning(
+                            'Response to request with pk %s has content type %s but was unable to parse it'
+                            % (self.request.pk, content_type)
+                        )
         return body, content
 
     def construct_response_model(self):

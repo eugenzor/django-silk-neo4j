@@ -9,30 +9,36 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: ['3.8', '3.9', '3.10', '3.11']
-        django-version: ['3.2', '4.1', 'main']
-        postgres-version: ['11', '12']
-        mariadb-version: ['10.3', '10.4']
+        python-version: ['3.10', '3.11', '3.12', '3.13', '3.14', '3.15']
+        django-version: ['5.2', '6.0', '6.1', 'main']
+        postgres-version: ['14', '18']
+        mariadb-version: ['10.6', '10.11', '11.4', '11.8']
         exclude:
-          # Django <=4.0 doesn't support python 3.11 (https://docs.djangoproject.com/en/4.1/faq/install/)
-          - python-version: '3.11'
-            django-version: '3.2'
-
-          # only test Django dev with PostgreSQL 12 and MariaDB 10.4
-          - django-version: '3.2'
-            postgres-version: '12'
-          - django-version: '3.2'
-            mariadb-version: '10.4'
-
-          - django-version: '4.1'
-            postgres-version: '12'
-          - django-version: '4.1'
-            mariadb-version: '10.4'
-
+          # Django >=6.0 doesn't support Python <3.12 (https://docs.djangoproject.com/en/dev/releases/6.0/#python-compatibility)
+          - django-version: '6.0'
+            python-version: '3.10'
+          - django-version: '6.0'
+            python-version: '3.11'
+          - django-version: '6.1'
+            python-version: '3.10'
+          - django-version: '6.1'
+            python-version: '3.11'
           - django-version: 'main'
-            postgres-version: '11'
+            python-version: '3.10'
           - django-version: 'main'
-            mariadb-version: '10.3'
+            python-version: '3.11'
+
+          # Django 6.1 doesn't support Postgres <15
+          - django-version: '6.1'
+            postgres-version: '14'
+          - django-version: 'main'
+            postgres-version: '14'
+
+          # Django 6.1 doesn't support mariadb <10.11
+          - django-version: '6.1'
+            mariadb-version: '10.6'
+          - django-version: 'main'
+            mariadb-version: '10.6'
 
     services:
       postgres:
@@ -55,7 +61,7 @@ jobs:
           MYSQL_ROOT_PASSWORD: mysql
           MYSQL_DATABASE: mysql
         options: >-
-          --health-cmd "mysqladmin ping"
+          --health-cmd "mariadb-admin ping"
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
@@ -63,24 +69,25 @@ jobs:
         - 3306:3306
 
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v7
 
     - name: Set up Python ${{ matrix.python-version }}
-      uses: actions/setup-python@v2
+      uses: actions/setup-python@v7
       with:
         python-version: ${{ matrix.python-version }}
+        allow-prereleases: true
 
     - name: Get pip cache dir
       id: pip-cache
       run: |
-        echo "::set-output name=dir::$(pip cache dir)"
+        echo "dir=$(pip cache dir)" >> $GITHUB_OUTPUT
 
     - name: Cache
-      uses: actions/cache@v2
+      uses: actions/cache@v6
       with:
         path: ${{ steps.pip-cache.outputs.dir }}
         key:
-          ${{ matrix.python-version }}-v1-${{ hashFiles('**/requirements.txt') }}-${{ hashFiles('**/setup.py') }}-${{ hashFiles('**/tox.ini') }}
+          ${{ matrix.python-version }}-v1-${{ hashFiles('**/setup.py') }}-${{ hashFiles('**/pyproject.toml') }}-${{ hashFiles('**/tox.ini') }}
         restore-keys: |
           ${{ matrix.python-version }}-v1-
 
@@ -96,6 +103,6 @@ jobs:
         DJANGO: ${{ matrix.django-version }}
 
     - name: Upload coverage
-      uses: codecov/codecov-action@v1
+      uses: codecov/codecov-action@v7
       with:
         name: Python ${{ matrix.python-version }}
