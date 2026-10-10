@@ -7,6 +7,8 @@
    inside transactions and with the async API
  - The neo4j driver is now an optional dependency (`django-silk[neo4j]`)
  - Add `SILKY_NEO4J` setting to disable the capture
+ - Add the `silk_query` management command, which prints recorded requests, queries and profiles
+   as text or JSON, with query shapes, call sites and hints, for scripts and LLM agents
 
 
 ## [5.6.0](https://github.com/jazzband/django-silk/tree/5.6.0) (2026-09-11)

@@ -25,6 +25,7 @@ Silk is a live profiling and inspection tool for the Django framework. Silk inte
   * [Limiting request/response data](#limiting-requestresponse-data)
   * [Neo4j](#neo4j)
   * [Clearing logged data](#clearing-logged-data)
+* [Querying recorded data from the command line](#querying-recorded-data-from-the-command-line)
 * [Contributing](#contributing)
   * [Development Environment](#development-environment)
 
@@ -596,6 +597,64 @@ A management command will wipe out all logged data:
 ```bash
 python manage.py silk_clear_request_log
 ```
+
+## Querying recorded data from the command line
+
+This fork adds `silk_query`, a management command that prints what Silk recorded as plain text
+or JSON. It lets a script or an LLM agent find out why a request is slow from a shell, without
+the web UI. It only reads: nothing is created, changed or deleted.
+
+```bash
+python manage.py silk_query guide
+```
+
+`guide` prints the workflow and the terms used in the output. To investigate a slow view, go
+from the overview to the query:
+
+```bash
+python manage.py silk_query summary --path-contains /api/ --limit 3
+python manage.py silk_query requests --sort time --limit 3
+python manage.py silk_query request 96de4a15
+python manage.py silk_query queries 96de4a15 --shape 9879c756 --limit 3
+python manage.py silk_query query 89
+```
+
+`request` groups the queries of a request into shapes (the query with its literals replaced),
+labels each as SQL or Cypher, gives the application source line each shape was run from, and
+prints hints such as a likely N+1 pattern:
+
+```text
+request 96de4a15-78f1-40c5-b34d-be125c4af704
+...
+time_ms: 2186.81
+queries_ms: 1323.91
+outside_queries_ms: 862.90
+queries: 352 (0 sql, 352 cypher, 0 other)
+
+SHAPES (7, by total time)
+shape     kind    count  total_ms  avg_ms  max_ms  slowest_query  call_site                                             text
+9879c756  cypher    246    458.85    1.87   77.02             89  /backend/training/serializers.py:41 in get_frequency  MATCH (opening) WHERE elementId(opening)=? ...
+
+HINTS
+- [repeated_shape] shape 9879c756 ran 246 times (458.85 ms in total) most often from /backend/training/serializers.py:41 in get_frequency: likely N+1 pattern, fetch these rows in one query
+```
+
+The other subcommands are `shapes` (query shapes across many requests), `profiles` and
+`profile` (`silk_profile` blocks). Every output is bounded, says when it was cut and which
+option shows the rest, and ends with the follow-up commands. Add `--format json` for JSON:
+
+```bash
+python manage.py silk_query shapes --view training:openings --limit 2
+python manage.py silk_query request 96de4a15 --format json
+```
+
+Each subcommand describes its options with `--help`. See
+[docs/silk_query.rst](docs/silk_query.rst) for an example of every subcommand and the output
+conventions.
+
+**Note:** like any management command, `silk_query` is not subject to `SILKY_AUTHENTICATION`.
+Request and response headers and bodies are printed only with `request <id> --headers` and
+`--bodies`, as Silk recorded them.
 
 ## Contributing
 

@@ -119,3 +119,8 @@ fabric.properties
 
 package-lock.json
 *.db
+
+# AI assistant tooling
+.cursor/
+.claude/
+.agents/
